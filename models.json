@@ -1,4 +1,24 @@
 {
+    "claude-3-5-sonnet": {
+        "provider": "anthropic",
+        "model": "claude-3-5-sonnet-latest"
+    },
+    "claude-4-sonnet": {
+        "provider": "anthropic",
+        "model": "claude-sonnet-4-latest"
+    },
+    "claude-3-haiku": {
+        "provider": "anthropic",
+        "model": "claude-3-haiku-latest"
+    },
+    "gpt-5-mini": {
+        "provider": "openai",
+        "model": "gpt-5-mini"
+    },
+    "gpt-5-nano": {
+        "provider": "openai",
+        "model": "gpt-5-nano"
+    },
     "gpt-4o-mini": {
         "provider": "openai",
         "model": "gpt-4o-mini"
