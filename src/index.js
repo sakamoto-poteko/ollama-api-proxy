@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import dotenv from 'dotenv';
 import { generateText, streamText } from 'ai';
+import { createAnthropic } from '@ai-sdk/anthropic';
 import { createOpenAI } from '@ai-sdk/openai';
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { ColorConsole } from './console.js';
@@ -21,6 +22,9 @@ const PORT = process.env.PORT || 11434;
 
 // Initialize providers based on available API keys
 const providers = {};
+if (process.env.ANTHROPIC_API_KEY) {
+    providers.anthropic = createAnthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+}
 if (process.env.OPENAI_API_KEY) {
     providers.openai = createOpenAI({ apiKey: process.env.OPENAI_API_KEY });
 }
@@ -37,7 +41,7 @@ if (process.env.OPENROUTER_API_KEY) {
 }
 
 if (Object.keys(providers).length === 0) {
-    console.error('❌ No API keys found. Set OPENAI_API_KEY, GEMINI_API_KEY, or OPENROUTER_API_KEY');
+    console.error('❌ No API keys found. Set ANTHROPIC_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY, or OPENROUTER_API_KEY');
     process.exit(1);
 }
 
@@ -51,6 +55,12 @@ try {
     } else {
         // Built-in models
         models = {
+            'claude-3-5-sonnet': { provider: 'anthropic', model: 'claude-3-5-sonnet-latest' },
+            'claude-4-sonnet': { provider: 'anthropic', model: 'claude-sonnet-4-latest' },
+            'claude-3-haiku':    { provider: 'anthropic', model: 'claude-3-haiku-latest' },
+
+            'gpt-5-mini': { provider: 'openai', model: 'gpt-5-mini' },
+            'gpt-5-nano': { provider: 'openai', model: 'gpt-5-nano' },
             'gpt-4o-mini': { provider: 'openai', model: 'gpt-4o-mini' },
             'gpt-4.1-mini': { provider: 'openai', model: 'gpt-4.1-mini' },
             'gpt-4.1-nano': { provider: 'openai', model: 'gpt-4.1-nano' },
