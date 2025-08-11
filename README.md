@@ -1,17 +1,16 @@
-# Ollama to OpenAI/Gemini/OpenRouter Proxy
+# Ollama to OpenAI/Gemini/Anthropic/OpenRouter Proxy
 
 [![Version](https://img.shields.io/badge/version-1.0.2-blue.svg)](https://github.com/xrip/ollama-api-proxy)
 
-A Multi-Provider Ollama Proxy Server that allows using JetBrains AI Assistant with third-party commercial LLMs like
-OpenAI, Google Gemini, and OpenRouter, taking advantage of their free tier usage. Especialy for Kimi K2 and Deepseek R1
+A Multi-Provider Ollama Proxy Server that allows using JetBrains AI Assistant with third-party commercial LLMs like OpenAI, Google Gemini, Anthropic Claude, and OpenRouter, taking advantage of their free tier usage. Especially for Kimi K2 and Deepseek R1
 
 ## Overview
 
-This proxy server translates requests from the Ollama API format to OpenAI, Google Gemini, or OpenRouter API formats,
+This proxy server translates requests from the Ollama API format to Anthropic, OpenAI, Google Gemini, or OpenRouter API formats,
 allowing
 you to use these commercial LLMs with tools that support the Ollama API, such as JetBrains AI Assistant.
 
-The server runs on port 11434 by default (the same port as Ollama) and requires API keys for OpenAI, Gemini, and/or
+The server runs on port 11434 by default (the same port as Ollama) and requires API keys for Anthropic, OpenAI, Gemini, and/or
 OpenRouter, configured via
 environment variables.
 
@@ -19,6 +18,7 @@ environment variables.
 
 - Seamless integration with JetBrains AI Assistant
 - Support for multiple LLM providers:
+    - Anthropic models
     - OpenAI models
     - Google Gemini models
   - OpenRouter models
@@ -30,11 +30,18 @@ environment variables.
 
 ## Supported Models
 
-The proxy server supports a variety of models from OpenAI, Google Gemini, and OpenRouter. The default configurations
+The proxy server supports a variety of models from Anthropic, OpenAI, Google Gemini, and OpenRouter. The default configurations
 are:
+
+### Anthropic Models
+- claude-3-haiku
+- claude-3-5-sonnet
+- claude-4-sonnet
 
 ### OpenAI Models
 
+- gpt-5-mini
+- gpt-5-nano
 - gpt-4o-mini
 - gpt-4.1-mini
 - gpt-4.1-nano
@@ -63,6 +70,7 @@ will use the built-in default models.
 ```json
 {
     "my-custom-gpt": { "provider": "openai", "model": "gpt-4o-mini" },
+    "my-claude-sonnet": { "provider": "anthropic", "model": "claude-3-5-sonnet-20240620" },
     "my-gemini-pro": { "provider": "google", "model": "gemini-pro" },
     "my-openrouter-model": { "provider": "openrouter", "model": "mistralai/mistral-7b-instruct-v0.2" }
 }
@@ -90,6 +98,7 @@ npm install
 # Create .env file with your API keys
 echo "OPENAI_API_KEY=your_openai_api_key" > .env
 echo "GEMINI_API_KEY=your_gemini_api_key" >> .env
+echo "ANTHROPIC_API_KEY=your_anthropic_api_key" >> .env
 echo "OPENROUTER_API_KEY=your_openrouter_api_key" >> .env
 
 # Start the server
@@ -106,6 +115,7 @@ cd ollama-api-proxy
 # Create .env file with your API keys
 echo "OPENAI_API_KEY=your_openai_api_key" > .env
 echo "GEMINI_API_KEY=your_gemini_api_key" >> .env
+echo "ANTHROPIC_API_KEY=your_anthropic_api_key" >> .env
 echo "OPENROUTER_API_KEY=your_openrouter_api_key" >> .env
 
 # Build and run the Docker container
@@ -123,6 +133,7 @@ cd ollama-proxy-config
 # Create .env file with your API keys
 echo "OPENAI_API_KEY=your_openai_api_key" > .env
 echo "GEMINI_API_KEY=your_gemini_api_key" >> .env
+echo "ANTHROPIC_API_KEY=your_anthropic_api_key" >> .env
 echo "OPENROUTER_API_KEY=your_openrouter_api_key" >> .env
 
 # Run the proxy server using npx
@@ -142,6 +153,7 @@ cd ollama-proxy-config
 # Create .env file with your API keys
 echo "OPENAI_API_KEY=your_openai_api_key" > .env
 echo "GEMINI_API_KEY=your_gemini_api_key" >> .env
+echo "ANTHROPIC_API_KEY=your_anthropic_api_key" >> .env
 echo "OPENROUTER_API_KEY=your_openrouter_api_key" >> .env
 
 # Run the proxy server using bunx
@@ -158,6 +170,7 @@ The proxy server is configured using environment variables:
 - `PORT`: The port on which the server will run (default: 11434)
 - `OPENAI_API_KEY`: Your OpenAI API key (required for OpenAI models)
 - `GEMINI_API_KEY`: Your Google Gemini API key (required for Gemini models)
+- `ANTHROPIC_API_KEY`: Your Anthropic API key (required for Anthropic models)
 - `OPENROUTER_API_KEY`: Your OpenRouter API key (required for OpenRouter models)
 - `NODE_ENV`: Set to `production` for production use or `development` for development
 
