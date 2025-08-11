@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import dotenv from 'dotenv';
 import { generateText, streamText } from 'ai';
+import { createAnthropic } from '@ai-sdk/anthropic';
 import { createOpenAI } from '@ai-sdk/openai';
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { ColorConsole } from './console.js';
@@ -21,6 +22,9 @@ const PORT = process.env.PORT || 11434;
 
 // Initialize providers based on available API keys
 const providers = {};
+if (process.env.ANTHROPIC_API_KEY) {
+    providers.anthropic = createAnthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+}
 if (process.env.OPENAI_API_KEY) {
     providers.openai = createOpenAI({ apiKey: process.env.OPENAI_API_KEY });
 }
@@ -37,7 +41,7 @@ if (process.env.OPENROUTER_API_KEY) {
 }
 
 if (Object.keys(providers).length === 0) {
-    console.error('❌ No API keys found. Set OPENAI_API_KEY, GEMINI_API_KEY, or OPENROUTER_API_KEY');
+    console.error('❌ No API keys found. Set ANTHROPIC_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY, or OPENROUTER_API_KEY');
     process.exit(1);
 }
 
@@ -51,6 +55,12 @@ try {
     } else {
         // Built-in models
         models = {
+            'claude-3-5-sonnet': { provider: 'anthropic', model: 'claude-3-5-sonnet-latest' },
+            'claude-4-sonnet': { provider: 'anthropic', model: 'claude-sonnet-4-latest' },
+            'claude-3-haiku':    { provider: 'anthropic', model: 'claude-3-haiku-latest' },
+
+            'gpt-5-mini': { provider: 'openai', model: 'gpt-5-mini' },
+            'gpt-5-nano': { provider: 'openai', model: 'gpt-5-nano' },
             'gpt-4o-mini': { provider: 'openai', model: 'gpt-4o-mini' },
             'gpt-4.1-mini': { provider: 'openai', model: 'gpt-4.1-mini' },
             'gpt-4.1-nano': { provider: 'openai', model: 'gpt-4.1-nano' },
@@ -95,13 +105,32 @@ const validateModel = name => {
     return config;
 };
 
-// Prepare messages for AI SDK
-const prepareMessages = messages => messages
-    .filter(msg => msg.content && msg.content.trim()) // Remove empty messages
-    .map(msg => ({
-        role: msg.role === 'assistant' ? 'assistant' : 'user',
-        content: String(msg.content).trim(),
-    }));
+// Accepts: content as string OR array.
+// - If array of strings → join into one string
+// - If array with objects (parts) → pass through, just trim text parts
+const prepareMessages = (msgs = []) => msgs
+  .map(({ role, content }) => {
+    if (Array.isArray(content)) {
+      content = content.every(x => typeof x === 'string')
+        ? content.map(s => s.trim()).filter(Boolean).join('\n')
+        : content
+            .map(p => (p?.type === 'text'
+              ? { ...p, text: String(p.text || '').trim() }
+              : p))
+            .filter(p => (p?.type === 'text' ? p.text : p));
+    } else if (typeof content === 'string') {
+      content = content.trim();
+    }
+
+    const r = role === 'assistant' ? 'assistant'
+            : role === 'system'   ? 'system'
+            : 'user';
+
+    return content && (Array.isArray(content) ? content.length : content)
+      ? { role: r, content }
+      : null;
+  })
+  .filter(Boolean);
 
 
 // Generate complete text response using AI SDK
@@ -325,6 +354,139 @@ const handleModelGenerationRequest = async (request, response, messageExtractor,
     }
 };
 
+const handleOpenAIChatCompletions = async (request, response) => {
+  try {
+    const body = await getBody(request);
+    const {
+      model,                 // string (your alias, e.g. "gpt-4o-mini" or "claude-..."),
+      messages = [],         // OpenAI-style [{role, content}]
+      stream = false,
+      temperature,
+      top_p,
+      max_tokens,            // OpenAI name
+      // (you can read other OpenAI params here if you want)
+    } = body;
+
+    const modelConfig = validateModel(model);
+    const options = {
+      temperature,
+      top_p,
+      num_predict: max_tokens,  // map OpenAI → your SDK option
+    };
+
+    // Non-streaming (simple JSON)
+    if (!stream) {
+      const result = await generateResponse(modelConfig, messages, options);
+      const now = Math.floor(Date.now() / 1000);
+
+      const payload = {
+        id: `chatcmpl_${Math.random().toString(36).slice(2)}`,
+        object: 'chat.completion',
+        created: now,
+        model,
+        choices: [{
+          index: 0,
+          message: {
+            role: 'assistant',
+            content: result.text || '',
+            ...(result.reasoning ? { reasoning: result.reasoning } : {})
+          },
+          finish_reason: 'stop'
+        }],
+        usage: {
+          prompt_tokens: null,
+          completion_tokens: null,
+          total_tokens: null
+        }
+      };
+
+      return sendJSON(response, payload);
+    }
+
+    // Streaming (Server-Sent Events, OpenAI-compatible)
+    const provider = providers[modelConfig.provider];
+    const sdkModel = provider(modelConfig.model);
+    const validMessages = prepareMessages(messages);
+
+    response.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache, no-transform',
+      'Connection': 'keep-alive',
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type',
+    });
+
+    const now = Math.floor(Date.now() / 1000);
+    const id = `chatcmpl_${Math.random().toString(36).slice(2)}`;
+
+    const sendSSE = obj => response.write(`data: ${JSON.stringify(obj)}\n\n`);
+
+    // First delta: role=assistant (OpenAI does this)
+    sendSSE({
+      id,
+      object: 'chat.completion.chunk',
+      created: now,
+      model,
+      choices: [{ index: 0, delta: { role: 'assistant' }, finish_reason: null }]
+    });
+
+    try {
+      const result = await streamText({
+        model: sdkModel,
+        messages: validMessages,
+        temperature,
+        maxTokens: max_tokens,
+        topP: top_p,
+      });
+
+      for await (const delta of result.textStream) {
+        sendSSE({
+          id,
+          object: 'chat.completion.chunk',
+          created: Math.floor(Date.now() / 1000),
+          model,
+          choices: [{ index: 0, delta: { content: delta }, finish_reason: null }]
+        });
+      }
+
+      // Final chunk (finish_reason=stop)
+      sendSSE({
+        id,
+        object: 'chat.completion.chunk',
+        created: Math.floor(Date.now() / 1000),
+        model,
+        choices: [{ index: 0, delta: {}, finish_reason: 'stop' }]
+      });
+
+      // Stream terminator
+      response.write('data: [DONE]\n\n');
+      response.end();
+
+    } catch (err) {
+      // Error chunk (OpenAI-style)
+      sendSSE({
+        id,
+        object: 'chat.completion.chunk',
+        created: Math.floor(Date.now() / 1000),
+        model,
+        choices: [{ index: 0, delta: {}, finish_reason: 'error' }],
+        error: { message: err.message }
+      });
+      response.write('data: [DONE]\n\n');
+      response.end();
+    }
+
+  } catch (error) {
+    if (!response.headersSent) {
+      sendJSON(response, { error: error.message }, 500);
+    } else {
+      response.end();
+    }
+  }
+};
+
+
 const routes = {
     'GET /': (request, response) => response.end('Ollama is running in proxy mode.'),
     'GET /api/version': (request, response) => sendJSON(response, { version: '1.0.1e' }),
@@ -355,6 +517,10 @@ const routes = {
             body => [{ role: 'user', content: body.prompt }],
             'response',
         );
+    },
+    // Roo Code requires OpenAI compatible endpoints.
+    'POST /v1/chat/completions': async (req, res) => {
+        await handleOpenAIChatCompletions(req, res);
     },
 };
 
